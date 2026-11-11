@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>位相界 ISOKAI</title>
+<meta name="description" content="まったく異なる物理法則の世界を、法則を発見しながら漂う three.js の探索シミュレーター。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&family=Shippori+Mincho:wght@600&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+    "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.39.5/build/index.js"
+  }
+}
+</script>
+<style>
+:root {
+  --ink: #e9e6ff;
+  --dim: #9a96b8;
+  --panel: rgba(12, 8, 26, 0.72);
+  --line: rgba(190, 180, 255, 0.18);
+  --accent: #8ff6e4;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #05030c; color: var(--ink);
+  font-family: 'Zen Kaku Gothic New', system-ui, sans-serif; }
+canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.dim { color: var(--dim); }
+code { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 4px; }
+
+#overlay { position: fixed; inset: 0; display: grid; place-items: center; z-index: 20;
+  background: radial-gradient(ellipse at 50% 40%, rgba(40,20,80,0.55), rgba(3,2,10,0.92)); transition: opacity .8s; padding: 16px; }
+#overlay.hide { opacity: 0; pointer-events: none; }
+.card { max-width: 620px; text-align: center; }
+.card h1 { font-family: 'Shippori Mincho', serif; font-size: clamp(42px, 9vw, 76px); letter-spacing: .3em; margin: 0 0 4px;
+  background: linear-gradient(90deg, #8ff6e4, #c9a2ff, #ffb48f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.card .sub { letter-spacing: .5em; color: var(--dim); font-size: 12px; margin-bottom: 28px; }
+.card p { line-height: 1.9; color: #cfcbea; }
+.card .keys { font-size: 13px; color: var(--dim); margin: 22px 0; line-height: 2; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; font-family: inherit; color: var(--ink); }
+button { font: inherit; color: #05030c; background: var(--accent); border: 0; border-radius: 999px; padding: 12px 34px; cursor: pointer;
+  letter-spacing: .2em; font-weight: 700; box-shadow: 0 0 30px rgba(143,246,228,.35); }
+button:hover { filter: brightness(1.1); }
+
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+#cross { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px; border: 1px solid rgba(255,255,255,.6); border-radius: 50%; }
+#cross::after { content: ''; position: absolute; left: 7px; top: 7px; width: 2px; height: 2px; background: #fff; border-radius: 50%; }
+#target { position: absolute; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); font-size: 13px; color: #fff;
+  text-shadow: 0 0 6px #000; white-space: nowrap; }
+#phasewrap { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: flex-end; gap: 10px; }
+#phase { width: 120px; height: 120px; }
+#phaseinfo { font-size: 12px; line-height: 1.7; color: #d8d4f4; text-shadow: 0 0 6px #000; padding-bottom: 8px; }
+#info { position: absolute; left: 16px; top: 14px; font-size: 12px; line-height: 1.7; color: #d8d4f4; text-shadow: 0 0 6px #000; }
+#helpline { position: absolute; right: 16px; bottom: 14px; font-size: 11px; color: var(--dim); text-shadow: 0 0 6px #000; text-align: right; }
+#toasts { position: absolute; right: 16px; top: 14px; width: min(360px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; }
+.toast { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.6;
+  backdrop-filter: blur(6px); animation: in .4s ease-out; transition: opacity .7s, transform .7s; }
+.toast.out { opacity: 0; transform: translateX(20px); }
+.toast.law { border-color: rgba(143,246,228,.6); box-shadow: 0 0 24px rgba(143,246,228,.2); }
+.toast small { display: block; color: var(--accent); letter-spacing: .15em; }
+.toast b { display: block; font-size: 16px; font-family: 'Shippori Mincho', serif; margin: 2px 0; }
+.toast span { display: block; }
+.toast em { display: block; color: #ffd98f; font-style: normal; margin-top: 4px; font-size: 12px; }
+@keyframes in { from { opacity: 0; transform: translateY(-8px); } }
+#scan { position: absolute; right: 16px; bottom: 50px; width: 260px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 16px; font-size: 12px; opacity: 0; transform: translateY(10px); transition: .4s; backdrop-filter: blur(6px); }
+#scan.show { opacity: 1; transform: none; }
+#scan h3 { margin: 0; font-family: 'Shippori Mincho', serif; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+#scan h3 em { font-size: 11px; color: #ffd98f; font-style: normal; font-family: 'Zen Kaku Gothic New'; }
+#scan p { margin: 2px 0 8px; }
+#scan table { width: 100%; border-collapse: collapse; }
+#scan td { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+#scan td:last-child { text-align: right; }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 8px currentColor; flex: none; }
+
+#journal { position: fixed; inset: 0; z-index: 10; display: none; place-items: center; background: rgba(3,2,10,.55); padding: 16px; }
+#journal.show { display: grid; }
+#jpanel { width: min(680px, 100%); max-height: min(80vh, 760px); display: flex; flex-direction: column; background: rgba(14,9,30,.9);
+  border: 1px solid var(--line); border-radius: 16px; backdrop-filter: blur(10px); }
+#jhead { display: flex; gap: 4px; padding: 12px 12px 0; flex-wrap: wrap; align-items: center; }
+#jhead .t { font-family: 'Shippori Mincho', serif; margin-right: auto; padding: 0 8px; font-size: 18px; }
+#jhead button[data-tab], #jclose { background: transparent; color: var(--dim); box-shadow: none; padding: 6px 14px; letter-spacing: .1em; font-weight: 400; }
+#jhead button.on { color: var(--ink); background: rgba(255,255,255,.08); }
+#jbody { overflow: auto; padding: 8px 22px 22px; font-size: 14px; line-height: 1.8; }
+#jbody canvas { width: 100%; height: auto; border-radius: 8px; }
+.law { border-left: 2px solid var(--line); padding: 2px 0 2px 14px; margin: 14px 0; }
+.law.found { border-color: var(--accent); }
+.law h3 { margin: 0; font-size: 15px; font-family: 'Shippori Mincho', serif; }
+.law.found h3 { color: var(--accent); }
+.law p { margin: 2px 0; }
+.hint { color: var(--dim); font-style: italic; }
+.done { color: #ffd98f; }
+.sp { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); flex-wrap: wrap; }
+.sp .n { margin-left: auto; color: var(--dim); }
+.sp.gone { opacity: .45; }
+.legend span { margin-right: 10px; font-size: 12px; }
+.keys { color: var(--dim); }
+@media (max-width: 600px) {
+  #phase { width: 90px; height: 90px; }
+  #helpline { display: none; }
+  #scan { left: 16px; right: 16px; width: auto; bottom: 120px; }
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="cross"></div>
+  <div id="target"></div>
+  <div id="info"></div>
+  <div id="toasts"></div>
+  <div id="scan"></div>
+  <div id="phasewrap"><canvas id="phase" width="240" height="240"></canvas><div id="phaseinfo"></div></div>
+  <div id="helpline">Tab 手帳 ・ Q/E 位相 ・ F 観測 ・ R 放射 ・ T 時間</div>
+</div>
+
+<div id="journal">
+  <div id="jpanel">
+    <div id="jhead">
+      <span class="t">観測手帳</span>
+      <button data-tab="laws">法則</button>
+      <button data-tab="species">図鑑</button>
+      <button data-tab="eco">生態</button>
+      <button data-tab="world">世界</button>
+      <button id="jclose">閉じる ✕</button>
+    </div>
+    <div id="jbody"></div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="card">
+    <h1>位相界</h1>
+    <div class="sub">I S O K A I</div>
+    <p>ここでは、重さも、引力も、時間の速さも、<b>色</b>で決まる。<br>
+    あなた自身にも色（位相）がある。<br>
+    漂う生き物たちは、あなたがいなくても食べ、増え、変わっていく。<br>
+    この世界の法則を、ひとつずつ見つけてほしい。</p>
+    <div class="keys">
+      <kbd>WASD</kbd> 移動　<kbd>マウス</kbd> 視点　<kbd>Q</kbd><kbd>E</kbd> 自分の位相を回す<br>
+      <kbd>F</kbd>/クリック 観測　<kbd>R</kbd> 位相を放つ　<kbd>Space</kbd> 跳ぶ　<kbd>Shift</kbd> 速く<br>
+      <kbd>Tab</kbd> 観測手帳　<kbd>T</kbd> 時間を速める　<kbd>M</kbd> 音　<kbd>B</kbd> 光の滲み
+    </div>
+    <button id="go">世界に降りる</button>
+    <p class="dim" style="font-size:12px;margin-top:18px">世界の種 <code id="seedlabel"></code>（毎回ちがう法則の世界が生まれる）</p>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
